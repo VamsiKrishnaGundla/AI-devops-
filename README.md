@@ -1,1 +1,75 @@
-# AI-devops-
+#!/bin/bash
+
+# vm_health_check.sh	
+# Analyze VM health based on CPU, Memory, and Disk usage on Ubuntu.
+# Usage: ./vm_health_check.sh [explain]
+
+# Function to get CPU usage as a percentage
+get_cpu_usage() {
+    # Get current CPU idle percentage, then subtract from 100
+    CPU_IDLE=$(top -bn2 | grep "Cpu(s)" | tail -n 1 | awk -F',' '{for(i=1;i<=NF;i++) if ($i ~ /id/) print $i}' | awk '{print $1}' | sed 's/%id//')
+    CPU_USAGE=$(echo "scale=2; 100 - $CPU_IDLE" | bc)
+    echo "$CPU_USAGE"
+}
+
+# Function to get Memory usage as a percentage
+get_mem_usage() {
+    MEM_TOTAL=$(free | awk '/Mem:/ {print $2}')
+    MEM_USED=$(free | awk '/Mem:/ {print $3}')
+    MEM_USAGE=$(echo "scale=2; $MEM_USED / $MEM_TOTAL * 100" | bc)
+    echo "$MEM_USAGE"
+}
+
+# Function to get Disk usage as a percentage (for root '/')
+get_disk_usage() {
+    DISK_USAGE=$(df / | tail -1 | awk '{print $5}' | sed 's/%//')
+    echo "$DISK_USAGE"
+}
+
+EXPLAIN=0
+if [[ "$1" == "explain" ]]; then
+    EXPLAIN=1
+fi
+
+CPU_USAGE=$(get_cpu_usage)
+MEM_USAGE=$(get_mem_usage)
+DISK_USAGE=$(get_disk_usage)
+
+HEALTHY=1
+REASON=()
+
+if (( $(echo "$CPU_USAGE > 60" | bc -l) )); then
+    HEALTHY=0
+    REASON+=("CPU usage is high: ${CPU_USAGE}%")
+fi
+
+if (( $(echo "$MEM_USAGE > 60" | bc -l) )); then
+    HEALTHY=0
+    REASON+=("Memory usage is high: ${MEM_USAGE}%")
+fi
+
+if (( $(echo "$DISK_USAGE > 60" | bc -l) )); then
+    HEALTHY=0
+    REASON+=("Disk usage is high: ${DISK_USAGE}%")
+fi
+
+if [[ $HEALTHY -eq 1 ]]; then
+    echo "HEALTH STATUS: Healthy"
+    if [[ $EXPLAIN -eq 1 ]]; then
+        echo "Reason: All resources are below 60% utilization."
+        echo "CPU Usage: ${CPU_USAGE}%"
+        echo "Memory Usage: ${MEM_USAGE}%"
+        echo "Disk Usage: ${DISK_USAGE}%"
+    fi
+else
+    echo "HEALTH STATUS: Not Healthy"
+    if [[ $EXPLAIN -eq 1 ]]; then
+        echo "Reason(s):"
+        for r in "${REASON[@]}"; do
+            echo "- $r"
+        done
+        echo "CPU Usage: ${CPU_USAGE}%"
+        echo "Memory Usage: ${MEM_USAGE}%"
+        echo "Disk Usage: ${DISK_USAGE}%"
+    fi
+fi
